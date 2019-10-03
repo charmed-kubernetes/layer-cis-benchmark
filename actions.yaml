@@ -1,0 +1,10 @@
+cis-benchmark:
+  description: |
+    Run the CIS Kubernetes Benchmark against snap-based components.
+  params:
+    mode:
+      type: string
+      default: 'report'
+      description: |
+        Action to take when running kube-bench. Currently, the only supported
+        mode is 'report'.

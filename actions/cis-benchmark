@@ -1,91 +1,143 @@
 #!/usr/local/sbin/charm-env python3
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 
 from pathlib import Path
-from shutil import which
 
 from charmhelpers.core import hookenv
-from charmhelpers.fetch.giturl import GitUrlFetchHandler
+from charmhelpers.fetch.archiveurl import ArchiveUrlFetchHandler
 from charms.layer import snap
 from charms.reactive import is_flag_set
 
 
-BENCH_CMD = '/usr/local/bin/kube-bench'
-BENCH_PKG = 'github.com/aquasecurity/kube-bench'
+BENCH_HOME = '/home/ubuntu/kube-bench'
+BENCH_BIN = '{}/kube-bench'.format(BENCH_HOME)
+BENCH_CFG = '{}/cfg'.format(BENCH_HOME)
+GO_PKG = 'github.com/aquasecurity/kube-bench'
+RESULTS_DIR = '/home/ubuntu/kube-bench-results'
 
 
-def fail(msg):
+def _fail(msg):
+    '''Fail the action with a given message.'''
     hookenv.action_fail(msg)
     sys.exit()
 
 
-def install():
+def _move_matching_parent(dirpath, filename, dest):
+    '''Move a parent directory that contains a specific file.
+
+    Helper function that walks a directory looking for a given file. If found,
+    the file's parent directory is moved to the given destination.
+
+    :param: dirpath: String path to search
+    :param: filename: String file to find
+    :param: dest: String destination of the found parent directory
+    '''
+    for root, _, files in os.walk(dirpath):
+        for name in files:
+            if name == filename:
+                hookenv.log('Moving {} to {}'.format(root, dest))
+                shutil.move(root, dest)
+                return
+    else:
+        _fail('Could not find {} in {}'.format(filename, dirpath))
+
+
+def install(release, config):
     '''Install kube-bench and related configuration.
 
-    Install go if needed. Pull, build, and setup snap-based benchmark
-    configuration.
+    Release and configuration are set via action params. If installing an
+    upstream release, this method will also install 'go' if needed.
+
+    :param: release: Archive URI or 'upstream'
+    :param: config: Archive URI of configuration files
     '''
-    go_bin = which('go')
-    if not go_bin:
-        go_bin = '/snap/bin/go'
-        snap.install('go', channel='stable', classic=True)
+    if Path(BENCH_HOME).exists():
+        shutil.rmtree(BENCH_HOME)
+    fetcher = ArchiveUrlFetchHandler()
 
-    go_cache = os.getenv('GOCACHE', '/var/snap/go/common/cache')
-    go_path = os.getenv('GOPATH', '/var/snap/go/common')
-    env = os.environ.copy()
-    env['GOCACHE'] = go_cache
-    env['GOPATH'] = go_path
-    Path(go_path).mkdir(parents=True, exist_ok=True)
+    if release == 'upstream':
+        Path(BENCH_HOME).mkdir(parents=True, exist_ok=True)
 
-    go_cmd = ('{bin} get {pkg} '
-              'github.com/golang/dep/cmd/dep'.format(bin=go_bin, pkg=BENCH_PKG))
-    try:
-        subprocess.check_call(shlex.split(go_cmd), cwd=go_path, env=env)
-    except subprocess.CalledProcessError:
-        fail('Failed to run: {}'.format(go_cmd))
+        # Setup the 'go' environment
+        env = os.environ.copy()
+        go_bin = shutil.which('go', path='{}:/snap/bin'.format(env['PATH']))
+        if not go_bin:
+            snap.install('go', channel='stable', classic=True)
+            go_bin = '/snap/bin/go'
+        go_cache = os.getenv('GOCACHE', '/var/snap/go/common/cache')
+        go_path = os.getenv('GOPATH', '/var/snap/go/common')
+        env['GOCACHE'] = go_cache
+        env['GOPATH'] = go_path
+        Path(go_path).mkdir(parents=True, exist_ok=True)
 
-    go_cmd = ('{bin} build -o {out} {base}/src/{pkg}'.format(
-        bin=go_bin, out=BENCH_CMD, base=go_path, pkg=BENCH_PKG))
-    try:
-        subprocess.check_call(shlex.split(go_cmd), cwd=go_path, env=env)
-    except subprocess.CalledProcessError:
-        fail('Failed to run: {}'.format(go_cmd))
+        # From https://github.com/aquasecurity/kube-bench#installing-from-sources
+        go_cmd = ('{bin} get {pkg} '
+                  'github.com/golang/dep/cmd/dep'.format(bin=go_bin, pkg=GO_PKG))
+        try:
+            subprocess.check_call(shlex.split(go_cmd), cwd=go_path, env=env)
+        except subprocess.CalledProcessError:
+            _fail('Failed to run: {}'.format(go_cmd))
 
-    cfg_dir = '{bin}/src/{pkg}/cfg-ck'.format(bin=go_path, pkg=BENCH_PKG)
-    GitUrlFetchHandler().clone('https://github.com/charmed-kubernetes/kube-bench-config.git',
-                               dest=cfg_dir)
+        go_cmd = ('{bin} build -o {out} {base}/src/{pkg}'.format(
+            bin=go_bin, out=BENCH_BIN, base=go_path, pkg=GO_PKG))
+        try:
+            subprocess.check_call(shlex.split(go_cmd), cwd=go_path, env=env)
+        except subprocess.CalledProcessError:
+            _fail('Failed to run: {}'.format(go_cmd))
+    else:
+        # Fetch the release URI and put it in the right place.
+        archive_path = fetcher.install(source=release)
+        # NB: We may not know the structure of the archive, but we know the
+        # directory containing 'kube-bench' belongs in our BENCH_HOME.
+        _move_matching_parent(
+            dirpath=archive_path, filename='kube-bench', dest=BENCH_HOME)
+
+    # Fetch the config URI and put it in the right place.
+    archive_dir = fetcher.install(source=config)
+    # NB: We may not know the structure of the archive, but we know the
+    # directory containing 'config.yaml' belongs in our BENCH_CFG.
+    _move_matching_parent(
+        dirpath=archive_dir, filename='config.yaml', dest=BENCH_CFG)
 
 
 def report():
-    app = hookenv.charm_name() or ''
-    version = '1.13-snap-k8s'
-    if 'master' in app:
-        app = 'master'
-    elif 'worker' in app:
-        app = 'node'
-    elif 'etcd' in app:
-        app = 'master'
-        version = '1.13-snap-etcd'
+    '''Run kube-bench and report results.
 
-    go_path = os.getenv('GOPATH', '/var/snap/go/common')
-    res_path = '/home/ubuntu/kube-bench-results'
-    verbose_cmd = ('{bin} --config-dir {base}/src/{pkg}/cfg-ck --version {ver} '
-                   '{app}'.format(bin=BENCH_CMD, base=go_path, pkg=BENCH_PKG, ver=version, app=app))
-    summary_cmd = ('{bin} --config-dir {base}/src/{pkg}/cfg-ck --version {ver} --noremediations '
-                   '{app}'.format(bin=BENCH_CMD, base=go_path, pkg=BENCH_PKG, ver=version, app=app))
+    Save the full results to our RESULTS_DIR and display a summary to the user.
+    '''
+    Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
+
+    # Node type and config versions are different depending on the charm
+    app = hookenv.charm_name() or 'unknown'
+    if 'master' in app:
+        node_type = 'master'
+        version = '1.13-snap-k8s'
+    elif 'worker' in app:
+        node_type = 'node'
+        version = '1.13-snap-k8s'
+    elif 'etcd' in app:
+        node_type = 'master'
+        version = '1.13-snap-etcd'
+    else:
+        _fail('Unable to determine the node type to benchmark: {}'.format(app))
+
+    verbose_cmd = ('{bin} -D {cfg} --version {ver} {node}'.format(
+        bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type))
+    summary_cmd = ('{bin} -D {cfg} --version {ver} --noremediations {node}'.format(
+        bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type))
 
     # store full results for future operator consumption
-    Path(res_path).mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w+b', prefix='kube-bench-',
-                                     dir=res_path, delete=False) as res_file:
+                                     dir=RESULTS_DIR, delete=False) as res_file:
         try:
             subprocess.call(shlex.split(verbose_cmd), stdout=res_file)
         except subprocess.CalledProcessError:
-            fail('Failed to run: {}'.format(verbose_cmd))
+            _fail('Failed to run: {}'.format(verbose_cmd))
         else:
             # send fetch command to action output
             Path(res_file.name).chmod(0o644)
@@ -97,9 +149,8 @@ def report():
     try:
         out = subprocess.check_output(shlex.split(summary_cmd), universal_newlines=True)
     except subprocess.CalledProcessError:
-        fail('Failed to run: {}'.format(summary_cmd))
+        _fail('Failed to run: {}'.format(summary_cmd))
     else:
-        # set action output
         hookenv.action_set({'summary': out})
 
 
@@ -108,14 +159,20 @@ if __name__ == '__main__':
             is_flag_set('kubernetes-master.snaps.installed') or
             is_flag_set('kubernetes-worker.snaps.installed')):
         msg = 'Snaps are not yet installed on this unit.'
-        fail(msg)
+        _fail(msg)
 
-    mode = hookenv.action_get('mode') or ''
-    if mode not in ['apply', 'report']:
-        msg = 'Invalid mode parameter: {}'.format(mode)
-        fail(msg)
+    # Validate action params
+    release = hookenv.action_get('release') or 'upstream'
+    config = hookenv.action_get('config')
+    if not config:
+        msg = 'Missing "config" parameter'
+        _fail(msg)
 
-    if not Path(BENCH_CMD).exists():
-        install()
-    if mode == 'report':
-        report()
+    # Install, report, and apply as directed
+    # TODO: may want an option to overwrite an existing install
+    if Path(BENCH_BIN).exists() and Path(BENCH_CFG).exists():
+        hookenv.log('{} exists; skipping install'.format(BENCH_HOME))
+    else:
+        hookenv.log('Installing benchmark from: {}'.format(release))
+        install(release, config)
+    report()

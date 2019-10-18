@@ -2,6 +2,16 @@ cis-benchmark:
   description: |
     Run the CIS Kubernetes Benchmark against snap-based components.
   params:
+    apply:
+      type: string
+      default: ''
+      description: |
+        Apply remediations to address benchmark failures. The default, an empty
+        string, will not attempt to fix any reported failures. Set to
+        'conservative' to resolve simple failures. Set to 'dangerous' to
+        resolve all failures.
+
+        Note: Applying any remediation may result in an unusable cluster.
     config:
       type: string
       default: 'https://github.com/charmed-kubernetes/kube-bench-config/archive/master.zip#sha1=4a6f7a092ff893ab7a5e2e6596e91a7eeacdfce4'

@@ -6,13 +6,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
-
 from pathlib import Path
 
-from charmhelpers.core import hookenv
+import charms.layer
+import charms.reactive
+from charmhelpers.core import hookenv, unitdata
 from charmhelpers.fetch.archiveurl import ArchiveUrlFetchHandler
 from charms.layer import snap
-from charms.reactive import is_flag_set
+from charms.reactive import clear_flag, is_flag_set, set_flag
 
 
 BENCH_HOME = '/home/ubuntu/kube-bench'
@@ -21,44 +22,47 @@ BENCH_CFG = '{}/cfg'.format(BENCH_HOME)
 GO_PKG = 'github.com/aquasecurity/kube-bench'
 RESULTS_DIR = '/home/ubuntu/kube-bench-results'
 
-# Remediation dicts associate a failing test with a command that will fix it
+# Remediation dicts associate a failing test with a tuple to fix it
+# For example:
+#  {'1.2.3': ('manual -- we don't know how to auto fix this', None, None)}
+#  {'1.2.3': ('cli', 'command to run', None)}
+#  {'1.2.3': ('kv', 'service', {cfg_key: value}))
 CONSERVATIVE = {
-    '0.0.0': 'echo "this is fine"',
+    '0.0.0': ('cli', 'echo "this is fine"', None),
 }
 DANGEROUS = {
-    '0.0.0': 'echo "this is fine"',
+    '0.0.0': ('cli', 'echo "this is fine"', None),
+
+    # etcd (no known failures with a default install)
 
     # k8s-master
-    '1.1.2': 'manual',
-    '1.1.5': 'manual',
-    '1.1.6': 'manual',
-    '1.1.8': 'manual',
-    '1.1.9': 'manual',
-    '1.1.11': 'manual',
-    '1.1.16': 'manual',
-    '1.1.17': 'manual',
-    '1.1.19': 'manual',
-    '1.1.20': 'manual',
-    '1.1.24': 'manual',
-    '1.1.27': 'manual',
-    '1.1.32': 'manual',
-    '1.1.33': 'manual',
-    '1.1.36': 'manual',
-    '1.1.39': 'manual',
-    '1.2.1': 'manual',
-    '1.3.1': 'manual',
-    '1.3.2': 'manual',
-    '1.3.6': 'manual',
+    '1.1.2': ('kv', 'kube-apiserver', {'anonymous-auth': 'False'}),
+    '1.1.5': ('manual', None, None),
+    '1.1.6': ('manual', None, None),
+    '1.1.8': ('kv', 'kube-apiserver', {'profiling': 'False'}),
+    '1.1.9': ('manual', None, None),
+    '1.1.11': ('manual', None, None),
+    '1.1.16': ('kv', 'kube-apiserver', {'audit-log-maxage': '30'}),
+    '1.1.17': ('kv', 'kube-apiserver', {'audit-log-maxbackup': '10'}),
+    '1.1.19': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
+    '1.1.20': ('manual', None, None),
+    '1.1.24': ('manual', None, None),
+    '1.1.27': ('manual', None, None),
+    '1.1.32': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
+    '1.1.33': ('manual', None, None),
+    '1.1.36': ('manual', None, None),
+    '1.1.39': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
+    '1.2.1': ('kv', 'kube-scheduler', {'profiling': 'False'}),
+    '1.3.1': ('kv', 'kube-controller-manager', {'terminated-pod-gc-threshold': '10'}),
+    '1.3.2': ('kv', 'kube-controller-manager', {'profiling': 'False'}),
+    '1.3.6': ('manual', None, None),
 
     # k8s-worker
-    '2.1.1': 'manual',
-    '2.1.2': 'manual',
-    '2.1.3': 'manual',
-    '2.1.4': 'manual',
-    '2.1.6': 'manual',
-    '2.1.9': 'manual',
-    '2.1.10': 'manual',
-    '2.1.13': 'manual',
+    '2.1.2': ('kv', 'kubelet', {'authorization-mode': 'Webhook'}),
+    '2.1.4': ('kv', 'kubelet', {'read-only-port': '0'}),
+    '2.1.6': ('kv', 'kubelet', {'protect-kernel-defaults': 'True'}),
+    '2.1.9': ('kv', 'kubelet', {'event-qps': '0'}),
+    '2.1.13': ('manual', None, None),
 }
 
 
@@ -152,6 +156,8 @@ def apply(remediations=None):
     :param: remediations: either 'conservative' or 'dangerous'
     '''
     danger = True if remediations == 'dangerous' else False
+    db = unitdata.kv()
+    restart_charm = False
 
     json_report = report(log_format='json')
     hookenv.log('Loading JSON from: {}'.format(json_report))
@@ -172,22 +178,49 @@ def apply(remediations=None):
                 if not test_remedy and danger:
                     # no conservative remedy, check dangerous if user wants
                     test_remedy = DANGEROUS.get(test_num)
-                if test_remedy == 'manual':
-                    # we don't know how to autofix; log remediation text
-                    hookenv.log('Test {}: unable to auto-apply remedy.\n'
-                                'Manual steps:\n{}'.format(test_num,
-                                                           test_remediation))
-                elif test_remedy:
-                    try:
-                        out = subprocess.check_output(shlex.split(test_remedy))
-                    except subprocess.CalledProcessError:
-                        _fail('Test {}: failed to run: {}'.format(test_num,
-                                                                  test_remedy))
-                    else:
-                        hookenv.log('Test {}: applied remedy: {}\n'
-                                    'Output: {}'.format(test_num, test_remedy, out))
+                if isinstance(test_remedy, tuple):
+                    if test_remedy[0] == 'manual':
+                        # we don't know how to autofix; log remediation text
+                        hookenv.log('Test {}: unable to auto-apply remedy.\n'
+                                    'Manual steps:\n{}'.format(test_num,
+                                                               test_remediation))
+                    elif test_remedy[0] == 'cli':
+                        cmd = shlex.split(test_remedy[1])
+                        try:
+                            out = subprocess.check_output(cmd)
+                        except subprocess.CalledProcessError:
+                            _fail('Test {}: failed to run: {}'.format(test_num, cmd))
+                        else:
+                            hookenv.log('Test {}: applied remedy: {}\n'
+                                        'Output: {}'.format(test_num, cmd, out))
+                            restart_charm = True
+                    elif test_remedy[0] == 'kv':
+                        cfg_key = 'cis' + test_remedy[1]
+                        cfg = db.get(cfg_key) or {}
+                        cfg.update(test_remedy[2])
+                        db.set(cfg_key, cfg)
+
+                        hookenv.log('Test {}: updated configuration: {}\n'.format(
+                            test_num, cfg))
+                        restart_charm = True
                 else:
                     hookenv.log('Test {}: remediation is missing'.format(test_num))
+
+    # Handle restarts based on the application we're benchmarking
+    app = hookenv.charm_name() or 'unknown'
+    if restart_charm:
+        if 'master' in app:
+            hookenv.log('Restarting master')
+            clear_flag('kubernetes-master.components.started')
+        elif 'worker' in app:
+            hookenv.log('Restarting worker')
+            set_flag('kubernetes-worker.restart-needed')
+        else:
+            _fail('Unable to determine the charm to restart: {}'.format(app))
+
+        # Invoke reactive to do something based on the flags we just managed
+        charms.layer.import_layer_libs()
+        charms.reactive.main()
 
 
 def report(log_format='text'):

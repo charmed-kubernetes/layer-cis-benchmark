@@ -36,10 +36,10 @@ DANGEROUS = {
     # etcd (no known failures with a default install)
 
     # k8s-master
-    '1.1.2': ('kv', 'kube-apiserver', {'anonymous-auth': 'False'}),
+    '1.1.2': ('kv', 'kube-apiserver', {'anonymous-auth': 'false'}),
     '1.1.5': ('manual', None, None),
     '1.1.6': ('manual', None, None),
-    '1.1.8': ('kv', 'kube-apiserver', {'profiling': 'False'}),
+    '1.1.8': ('kv', 'kube-apiserver', {'profiling': 'false'}),
     '1.1.9': ('manual', None, None),
     '1.1.11': ('manual', None, None),
     '1.1.16': ('kv', 'kube-apiserver', {'audit-log-maxage': '30'}),
@@ -52,17 +52,17 @@ DANGEROUS = {
     '1.1.33': ('manual', None, None),
     '1.1.36': ('manual', None, None),
     '1.1.39': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
-    '1.2.1': ('kv', 'kube-scheduler', {'profiling': 'False'}),
+    '1.2.1': ('kv', 'kube-scheduler', {'profiling': 'false'}),
     '1.3.1': ('kv', 'kube-controller-manager', {'terminated-pod-gc-threshold': '10'}),
-    '1.3.2': ('kv', 'kube-controller-manager', {'profiling': 'False'}),
-    '1.3.6': ('manual', None, None),
+    '1.3.2': ('kv', 'kube-controller-manager', {'profiling': 'false'}),
+    '1.3.6': ('kv', 'kube-controller-manager', {'feature-gates': 'RotateKubeletServerCertificate=true'}),
 
     # k8s-worker
     '2.1.2': ('kv', 'kubelet', {'authorization-mode': 'Webhook'}),
     '2.1.4': ('kv', 'kubelet', {'read-only-port': '0'}),
-    '2.1.6': ('kv', 'kubelet', {'protect-kernel-defaults': 'True'}),
+    '2.1.6': ('kv', 'kubelet', {'protect-kernel-defaults': 'true'}),
     '2.1.9': ('kv', 'kubelet', {'event-qps': '0'}),
-    '2.1.13': ('manual', None, None),
+    '2.1.13': ('kv', 'kubelet', {'feature-gates': 'RotateKubeletServerCertificate=true'}),
 }
 
 
@@ -300,8 +300,8 @@ if __name__ == '__main__':
     if not config:
         msg = 'Missing "config" parameter'
         _fail(msg)
-    remediations = hookenv.action_get('apply') or ''
-    if remediations not in ['', 'conservative', 'dangerous']:
+    remediations = hookenv.action_get('apply')
+    if remediations not in ['none', 'conservative', 'dangerous']:
         msg = 'Invalid "apply" parameter: {}'.format(remediations)
         _fail(msg)
 

@@ -4,12 +4,12 @@ cis-benchmark:
   params:
     apply:
       type: string
-      default: ''
+      default: 'none'
       description: |
-        Apply remediations to address benchmark failures. The default, an empty
-        string, will not attempt to fix any reported failures. Set to
-        'conservative' to resolve simple failures. Set to 'dangerous' to
-        resolve all failures.
+        Apply remediations to address benchmark failures. The default, 'none',
+        will not attempt to fix any reported failures. Set to 'conservative'
+        to resolve simple failures. Set to 'dangerous' to attempt to resolve
+        all failures.
 
         Note: Applying any remediation may result in an unusable cluster.
     config:

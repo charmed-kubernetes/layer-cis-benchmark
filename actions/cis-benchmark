@@ -23,7 +23,9 @@ GO_PKG = 'github.com/aquasecurity/kube-bench'
 RESULTS_DIR = '/home/ubuntu/kube-bench-results'
 
 # Remediation dicts associate a failing test with a tuple to fix it.
-# For example:
+# Conservative fixes will probably leave the cluster in a good state.
+# Dangerous fixes will likely break the cluster.
+# Tuple examples:
 #  {'1.2.3': ('manual -- we don't know how to auto fix this', None, None)}
 #  {'1.2.3': ('cli', 'command to run', None)}
 #  {'1.2.3': ('kv', 'service', {cfg_key: value}))
@@ -33,7 +35,6 @@ CONSERVATIVE = {
     # etcd (no known failures with a default install)
 
     # k8s-master
-    '1.1.1': ('kv', 'kube-apiserver', {'anonymous-auth': 'false'}),
     '1.1.8': ('kv', 'kube-apiserver', {'profiling': 'false'}),
     '1.1.16': ('kv', 'kube-apiserver', {'audit-log-maxage': '30'}),
     '1.1.17': ('kv', 'kube-apiserver', {'audit-log-maxbackup': '10'}),
@@ -47,26 +48,28 @@ CONSERVATIVE = {
     '2.1.6': ('kv', 'kubelet', {'protect-kernel-defaults': 'true'}),
     '2.1.9': ('kv', 'kubelet', {'event-qps': '0'}),
 }
+ADMISSION_PLUGINS = {'enable-admission-plugins': ('PersistentVolumeLabel,'
+                                                  'AlwaysPullImages,'
+                                                  'PodSecurityPolicy,'
+                                                  'ServiceAccount,'
+                                                  'NodeRestriction')}
 DANGEROUS = {
     '0.0.0': ('cli', 'echo "this is fine"', None),
 
     # etcd (no known failures with a default install)
 
     # k8s-master
+    '1.1.1': ('kv', 'kube-apiserver', {'anonymous-auth': 'false'}),
     '1.1.2': ('kv', 'kube-apiserver', {'basic-auth-file': None}),
     '1.1.5': ('kv', 'kube-apiserver', {'insecure-bind-address': None}),
-    '1.1.6': ('kv', 'kube-apiserver', {'insecure-port': None}),
-    '1.1.11': ('kv', 'kube-apiserver', {'enable-admission-plugins':
-               'PersistentVolumeLabel,AlwaysPullImages,PodSecurityPolicy,ServiceAccount,NodeRestriction'}),
+    '1.1.6': ('kv', 'kube-apiserver', {'insecure-port': '0'}),
+    '1.1.11': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
     '1.1.19': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
     '1.1.20': ('kv', 'kube-apiserver', {'token-auth-file': None}),
-    '1.1.24': ('kv', 'kube-apiserver', {'enable-admission-plugins':
-               'PersistentVolumeLabel,AlwaysPullImages,PodSecurityPolicy,ServiceAccount,NodeRestriction'}),
-    '1.1.27': ('kv', 'kube-apiserver', {'enable-admission-plugins':
-               'PersistentVolumeLabel,AlwaysPullImages,PodSecurityPolicy,ServiceAccount,NodeRestriction'}),
+    '1.1.24': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
+    '1.1.27': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
     '1.1.32': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
-    '1.1.33': ('kv', 'kube-apiserver', {'enable-admission-plugins':
-               'PersistentVolumeLabel,AlwaysPullImages,PodSecurityPolicy,ServiceAccount,NodeRestriction'}),
+    '1.1.33': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
     '1.1.36': ('manual', None, None),
     '1.1.39': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
     '1.3.6': ('kv', 'kube-controller-manager', {'feature-gates': 'RotateKubeletServerCertificate=true'}),
@@ -103,7 +106,7 @@ def _move_matching_parent(dirpath, filename, dest):
 
 
 def _restart_charm():
-    '''Set charm-specific flags and call reactive.main()'''
+    '''Set charm-specific flags and call reactive.main().'''
     app = hookenv.charm_name() or 'unknown'
     if 'master' in app:
         hookenv.log('Restarting master')
@@ -238,6 +241,22 @@ def apply(remediations=None):
         _restart_charm()
 
 
+def reset():
+    '''Reset any remediations we applied to unitdata.kv().
+
+    This action does not track individual remediations to reset. Therefore,
+    this function unconditionally unsets all 'cis-' prefixed arguments that
+    this action may have set and restarts the relevant charm.
+    '''
+    db = unitdata.kv()
+
+    db.unset('cis-kube-apiserver')
+    db.unset('cis-kube-scheduler')
+    db.unset('cis-kube-controller-manager')
+    db.unset('cis-kubelet')
+    _restart_charm()
+
+
 def report(log_format='text'):
     '''Run kube-bench and report results.
 
@@ -316,7 +335,7 @@ if __name__ == '__main__':
         msg = 'Missing "config" parameter'
         _fail(msg)
     remediations = hookenv.action_get('apply')
-    if remediations not in ['none', 'conservative', 'dangerous']:
+    if remediations not in ['none', 'conservative', 'dangerous', 'reset']:
         msg = 'Invalid "apply" parameter: {}'.format(remediations)
         _fail(msg)
 
@@ -327,8 +346,11 @@ if __name__ == '__main__':
         hookenv.log('Installing benchmark from: {}'.format(release))
         install(release, config)
 
-    # If we have remediations to apply, do it before reporting results
-    if remediations:
+    # If we have remediations to deal with, do it before reporting results
+    if remediations == 'reset':
+        hookenv.log('Attempting to remove all remediations')
+        reset()
+    elif remediations != 'none':
         hookenv.log('Applying "{}" remediations'.format(remediations))
         apply(remediations)
     else:

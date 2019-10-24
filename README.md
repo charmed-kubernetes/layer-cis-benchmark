@@ -91,8 +91,8 @@ juju run-action --wait kubernetes-worker/0 cis-benchmark \
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg --version
     1.13-snap-k8s --noremediations --noresults node
-  report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-json-xbj8_mh4 .
-  summary: Remediations are complete. Re-run with "apply=none" to generate a new report.
+  report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-json-7b3g6jdg .
+  summary: Applied 5 remediations. Re-run with "apply=none" to generate a new report.
 status: completed
 ```
 
@@ -114,6 +114,24 @@ results:
     0 checks FAIL
     2 checks WARN
     1 checks INFO
+status: completed
+```
+
+## Removing Applied Remediations
+
+This action does not track individual remediations that it applies. However, it
+does support removing all configuration that it may have set in a charm's
+`unitdata.kv`. To clear this data from a unit, set the `apply` parameter to
+`reset`:
+
+```bash
+juju run-action --wait kubernetes-worker/0 cis-benchmark \
+  apply='reset'
+```
+
+```yaml
+results:
+  summary: Reset is complete. Re-run with "apply=none" to generate a new report.
 status: completed
 ```
 

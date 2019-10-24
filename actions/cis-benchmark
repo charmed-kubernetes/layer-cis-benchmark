@@ -116,6 +116,9 @@ def _restart_charm():
     elif 'worker' in app:
         hookenv.log('Restarting worker')
         set_flag('kubernetes-worker.restart-needed')
+    elif 'etcd' in app:
+        hookenv.log('No-op: etcd does not need to be restarted')
+        return
     else:
         _fail('Unable to determine the charm to restart: {}'.format(app))
 
@@ -191,13 +194,13 @@ def apply(remediations=None):
     db = unitdata.kv()
     restart_charm = False
 
-    json_report = report(log_format='json')
-    hookenv.log('Loading JSON from: {}'.format(json_report))
+    json_log = report(log_format='json')
+    hookenv.log('Loading JSON from: {}'.format(json_log))
     try:
-        with open(json_report, 'r') as f:
+        with open(json_log, 'r') as f:
             full_json = json.load(f)
     except Exception:
-        _fail('Failed to load: {}'.format(json_report))
+        _fail('Failed to load: {}'.format(json_log))
 
     for test in full_json.get('tests', {}):
         for result in test.get('results', {}):
@@ -242,6 +245,9 @@ def apply(remediations=None):
     if restart_charm:
         _restart_charm()
 
+    hookenv.action_set({'summary': ('Remediations are complete. Re-run with '
+                                    '"apply=none" to generate a new report.')})
+
 
 def reset():
     '''Reset any remediations we applied to unitdata.kv().
@@ -258,6 +264,9 @@ def reset():
     db.unset('cis-kubelet')
     _restart_charm()
 
+    hookenv.action_set({'summary': ('Reset is complete. Re-run with '
+                                    '"apply=none" to generate a new report.')})
+
 
 def report(log_format='text'):
     '''Run kube-bench and report results.
@@ -267,7 +276,7 @@ def report(log_format='text'):
     a machine-friendly json format.
 
     :param: log_format: String determines if output is text or json
-    :returns: Path to results file
+    :returns: Path to results log
     '''
     Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -285,19 +294,21 @@ def report(log_format='text'):
     else:
         _fail('Unable to determine the node type to benchmark: {}'.format(app))
 
+    # Commands and log names are different depending on the format
     if log_format == 'json':
-        verbose_cmd = ('{bin} -D {cfg} --version {ver} --json {node}'.format(
-            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type))
-        summary_cmd = None
-        log_prefix = 'kube-bench-json-'
+        log_prefix = 'results-json-'
+        verbose_cmd = '{bin} -D {cfg} --version {ver} --json {node}'.format(
+            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type)
     else:
-        verbose_cmd = ('{bin} -D {cfg} --version {ver} {node}'.format(
-            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type))
-        summary_cmd = ('{bin} -D {cfg} --version {ver} --noremediations {node}'.format(
-            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type))
-        log_prefix = 'kube-bench-txt-'
+        log_prefix = 'results-text-'
+        verbose_cmd = '{bin} -D {cfg} --version {ver} {node}'.format(
+            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type)
 
-    # store full results for future consumption
+    summary_cmd = ('{bin} -D {cfg} --version {ver} '
+                   '--noremediations --noresults {node}').format(
+        bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type)
+
+    # Store full results for future consumption
     with tempfile.NamedTemporaryFile(mode='w+b', prefix=log_prefix,
                                      dir=RESULTS_DIR, delete=False) as res_file:
         try:
@@ -309,19 +320,21 @@ def report(log_format='text'):
             Path(res_file.name).chmod(0o644)
             log = res_file.name
 
-    # machines hate summaries
-    if summary_cmd:
-        try:
-            out = subprocess.check_output(shlex.split(summary_cmd),
-                                          universal_newlines=True)
-        except subprocess.CalledProcessError:
-            _fail('Failed to run: {}'.format(summary_cmd))
-        else:
-            # tell humans the command we ran as well as the summarized report
-            hookenv.action_set({'cmd': verbose_cmd, 'summary': out})
+    # When making a summary, we also have a verbose report. Set action output
+    # so operators can see everything related to this run.
+    try:
+        out = subprocess.check_output(shlex.split(summary_cmd),
+                                      universal_newlines=True)
+    except subprocess.CalledProcessError:
+        _fail('Failed to run: {}'.format(summary_cmd))
+    else:
+        fetch_cmd = 'juju scp {unit}:{file} .'.format(unit=hookenv.local_unit(),
+                                                      file=log)
+        hookenv.action_set({'cmd': summary_cmd,
+                            'report': fetch_cmd,
+                            'summary': out})
 
-    # tell whatever called us where we wrote this report
-    return log if log else ''
+    return log or None
 
 
 if __name__ == '__main__':
@@ -349,7 +362,7 @@ if __name__ == '__main__':
         hookenv.log('Installing benchmark from: {}'.format(release))
         install(release, config)
 
-    # If we have remediations to deal with, do it before reporting results
+    # Reset, remediate, or report
     if remediations == 'reset':
         hookenv.log('Attempting to remove all remediations')
         reset()
@@ -358,9 +371,4 @@ if __name__ == '__main__':
         apply(remediations)
     else:
         hookenv.log('Report only; no remediations were requested')
-
-    # Tell the people what they've won
-    text_report = report(log_format='text')
-    fetch_cmd = 'juju scp {unit}:{file} `pwd`'.format(unit=hookenv.local_unit(),
-                                                      file=text_report)
-    hookenv.action_set({'fetch-cmd': fetch_cmd})
+        report(log_format='text')

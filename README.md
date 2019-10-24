@@ -1,5 +1,123 @@
-# layer-cis-benchmark
+# Introduction
 
-This is a base layer for common code needed to run the CIS Kubernetes Benchmark:
+This is a base layer for common code needed to run the
+[CIS Benchmark for Kubernetes][cis-benchmark]. Charms that include this layer
+will have a `cis-benchmark` action included in their builds.
 
-https://www.cisecurity.org/benchmark/kubernetes/
+## Usage
+
+Run the benchmark action on a charm that includes this layer. For example:
+
+```bash
+juju run-action --wait etcd/0 cis-benchmark
+```
+
+By default, the action will display a summary of any issues found as well as
+the command that was executed on the unit. A `report` command is included
+to faciliate transfering the full benchmark report to a local machine for
+analysis.
+
+```yaml
+results:
+  cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg --version
+    1.13-snap-etcd --noremediations --noresults master
+  report: juju scp etcd/0:/home/ubuntu/kube-bench-results/results-text-49681_7h .
+  summary: |
+    == Summary ==
+    7 checks PASS
+    0 checks FAIL
+    0 checks WARN
+    4 checks INFO
+status: completed
+```
+
+## Parameters
+
+The following parameters can be adjusted to change the default action behavior.
+See the descriptions in `actions.yaml` for additional supported values beyond
+the defaults.
+
+### apply
+
+When a failure is detected, this action can attempt to automatically fix it.
+This parameter is `none` by default, meaning the action will not attempt to
+apply any automatic remediations.
+
+### config
+
+Specify an archive of custom configuration scripts to use during the benchmark.
+This parameter is set by default to an archive that is known to work with
+snap-related components.
+
+### release
+
+Specify the `kube-bench` release to install and run. The default value of
+`upstream` will compile and use a local kube-bench binary built from the master
+branch of the [upstream repository][kube-bench].
+
+## Example Use Case
+
+Benchmark the `kubernetes-worker` charm using a custom configuration archive:
+
+```bash
+juju run-action --wait kubernetes-worker/0 cis-benchmark \
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/master.zip'
+```
+
+```yaml
+results:
+  cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg --version
+    1.13-snap-k8s --noremediations --noresults node
+  report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-text-8c71ktcn .
+  summary: |
+    == Summary ==
+    16 checks PASS
+    5 checks FAIL
+    2 checks WARN
+    1 checks INFO
+status: completed
+```
+
+Attempt to apply all known fixes to failing benchmark tests using the same
+configuration archive:
+
+```bash
+juju run-action --wait kubernetes-worker/0 cis-benchmark \
+  apply='dangerous' \
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/master.zip'
+```
+
+```yaml
+results:
+  cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg --version
+    1.13-snap-k8s --noremediations --noresults node
+  report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-json-xbj8_mh4 .
+  summary: Remediations are complete. Re-run with "apply=none" to generate a new report.
+status: completed
+```
+
+Re-run the initial action to see if previous failures have been fixed:
+
+```bash
+juju run-action --wait kubernetes-worker/0 cis-benchmark \
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/master.zip'
+```
+
+```yaml
+results:
+  cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg --version
+    1.13-snap-k8s --noremediations --noresults node
+  report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-text-m72vicwe .
+  summary: |
+    == Summary ==
+    21 checks PASS
+    0 checks FAIL
+    2 checks WARN
+    1 checks INFO
+status: completed
+```
+
+<!-- LINKS -->
+
+[cis-benchmark]: https://www.cisecurity.org/benchmark/kubernetes/
+[kube-bench]: https://github.com/aquasecurity/kube-bench

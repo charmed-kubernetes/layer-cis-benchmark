@@ -14,7 +14,7 @@ cis-benchmark:
         Note: Applying any remediation may result in an unusable cluster.
     config:
       type: string
-      default: 'https://github.com/charmed-kubernetes/kube-bench-config/archive/master.zip#sha1=4a6f7a092ff893ab7a5e2e6596e91a7eeacdfce4'
+      default: 'https://github.com/charmed-kubernetes/kube-bench-config/archive/master.zip'
       description: |
         Archive containing configuration files to use when running kube-bench.
         The default value is known to be compatible with snap components. When

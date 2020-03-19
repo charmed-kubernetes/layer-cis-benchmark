@@ -296,11 +296,13 @@ def report(log_format='text'):
     # Commands and log names are different depending on the format
     if log_format == 'json':
         log_prefix = 'results-json-'
-        verbose_cmd = '{bin} -D {cfg} --benchmark {ver} --json run --targets {target}'.format(
+        verbose_cmd = ('{bin} -D {cfg} --benchmark {ver} --json run '
+                       '--targets {target}').format(
             bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=target)
     else:
         log_prefix = 'results-text-'
-        verbose_cmd = '{bin} -D {cfg} --benchmark {ver} run --targets {target}'.format(
+        verbose_cmd = ('{bin} -D {cfg} --benchmark {ver} run '
+                       '--targets {target}').format(
             bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, target=target)
 
     summary_cmd = ('{bin} -D {cfg} --benchmark {ver} '

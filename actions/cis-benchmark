@@ -18,7 +18,7 @@ from charms.reactive import clear_flag, is_flag_set, set_flag
 
 BENCH_HOME = '/home/ubuntu/kube-bench'
 BENCH_BIN = '{}/kube-bench'.format(BENCH_HOME)
-BENCH_CFG = '{}/cfg'.format(BENCH_HOME)
+BENCH_CFG = '{}/cfg-ck'.format(BENCH_HOME)
 GO_PKG = 'github.com/aquasecurity/kube-bench'
 RESULTS_DIR = '/home/ubuntu/kube-bench-results'
 
@@ -281,33 +281,33 @@ def report(log_format='text'):
     '''
     Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
 
-    # Node type and config versions are different depending on the charm
+    # Node type is different depending on the charm
     app = hookenv.charm_name() or 'unknown'
+    version = 'cis-1.5'
     if 'master' in app:
-        node_type = 'master'
-        version = '1.13-snap-k8s'
+        target = 'master'
     elif 'worker' in app:
-        node_type = 'node'
-        version = '1.13-snap-k8s'
+        target = 'node'
     elif 'etcd' in app:
-        node_type = 'master'
-        version = '1.13-snap-etcd'
+        target = 'etcd'
     else:
-        _fail('Unable to determine the node type to benchmark: {}'.format(app))
+        _fail('Unable to determine the target to benchmark: {}'.format(app))
 
     # Commands and log names are different depending on the format
     if log_format == 'json':
         log_prefix = 'results-json-'
-        verbose_cmd = '{bin} -D {cfg} --version {ver} --json {node}'.format(
-            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type)
+        verbose_cmd = ('{bin} -D {cfg} --benchmark {ver} --json run '
+                       '--targets {target}').format(
+            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=target)
     else:
         log_prefix = 'results-text-'
-        verbose_cmd = '{bin} -D {cfg} --version {ver} {node}'.format(
-            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type)
+        verbose_cmd = ('{bin} -D {cfg} --benchmark {ver} run '
+                       '--targets {target}').format(
+            bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, target=target)
 
-    summary_cmd = ('{bin} -D {cfg} --version {ver} '
-                   '--noremediations --noresults {node}').format(
-        bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, node=node_type)
+    summary_cmd = ('{bin} -D {cfg} --benchmark {ver} '
+                   '--noremediations --noresults run --targets {target}').format(
+        bin=BENCH_BIN, cfg=BENCH_CFG, ver=version, target=target)
 
     # Store full results for future consumption
     with tempfile.NamedTemporaryFile(mode='w+b', prefix=log_prefix,

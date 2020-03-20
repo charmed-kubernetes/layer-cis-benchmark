@@ -14,7 +14,7 @@ cis-benchmark:
         Note: Applying any remediation may result in an unusable cluster.
     config:
       type: string
-      default: 'https://github.com/charmed-kubernetes/kube-bench-config/archive/ck-1.16.zip#sha1=ea78340b12c3b01398f06dcc25b3e78724509f4d'
+      default: 'https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.5.zip#sha1=cb8e78712ee5bfeab87d0ed7c139a83e88915530'
       description: |
         Archive containing configuration files to use when running kube-bench.
         The default value is known to be compatible with snap components. When
@@ -22,9 +22,9 @@ cis-benchmark:
         archive integrity when downloaded.
     release:
       type: string
-      default: 'upstream'
+      default: 'https://github.com/aquasecurity/kube-bench/releases/download/v0.2.3/kube-bench_0.2.3_linux_amd64.tar.gz#sha256=429a1db271689aafec009434ded1dea07a6685fee85a1deea638097c8512d548'
       description: |
-        Set the kube-bench release to run. The default value of 'upstream'
+        Set the kube-bench release to run. If set to 'upstream', the action
         will compile and use a local kube-bench binary built from the master
         branch of the upstream repository:
           https://github.com/aquasecurity/kube-bench

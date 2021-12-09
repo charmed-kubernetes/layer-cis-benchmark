@@ -183,13 +183,14 @@ def apply(remediations=None):
     except Exception:
         _fail('Failed to load: {}'.format(json_log))
 
+    full_json = full_json.get('Controls')[0] if 'Controls' in full_json else full_json
     for test in full_json.get('tests', {}):
         for result in test.get('results', {}):
             test_num = result.get('test_number')
             test_remediation = result.get('remediation')
             test_status = result.get('status', '')
 
-            if test_status.lower() == 'fail':
+            if test_status.lower() in ('fail', 'warn'):
                 test_remedy = CONSERVATIVE.get(test_num)
                 if not test_remedy and danger:
                     # no conservative remedy, check dangerous if user wants

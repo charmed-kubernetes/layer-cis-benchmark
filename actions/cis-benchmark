@@ -294,7 +294,9 @@ def report(log_format='text'):
     with tempfile.NamedTemporaryFile(mode='w+b', prefix=log_prefix,
                                      dir=RESULTS_DIR, delete=False) as res_file:
         try:
-            subprocess.call(shlex.split(verbose_cmd), stdout=res_file)
+            subprocess.call(shlex.split(verbose_cmd),
+                            stdout=res_file,
+                            stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
             _fail('Failed to run: {}'.format(verbose_cmd))
         else:
@@ -306,7 +308,8 @@ def report(log_format='text'):
     # so operators can see everything related to this run.
     try:
         out = subprocess.check_output(shlex.split(summary_cmd),
-                                      universal_newlines=True)
+                                      universal_newlines=True,
+                                      stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         _fail('Failed to run: {}'.format(summary_cmd))
     else:

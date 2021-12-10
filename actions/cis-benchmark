@@ -34,46 +34,31 @@ CONSERVATIVE = {
 
     # etcd (no known failures with a default install)
 
-    # k8s-master
-    '1.2.21': ('kv', 'kube-apiserver', {'profiling': 'false'}),
-    '1.2.23': ('kv', 'kube-apiserver', {'audit-log-maxage': '30'}),
-    '1.2.24': ('kv', 'kube-apiserver', {'audit-log-maxbackup': '10'}),
-    '1.3.1': ('kv', 'kube-controller-manager', {'terminated-pod-gc-threshold': '500'}),
-    '1.3.2': ('kv', 'kube-controller-manager', {'profiling': 'false'}),
-    '1.4.1': ('kv', 'kube-scheduler', {'profiling': 'false'}),
+    # k8s-master (no known failures with a default install)
 
-    # k8s-worker
-    '4.2.2': ('kv', 'kubelet', {'authorization-mode': 'Webhook'}),
-    '4.2.4': ('kv', 'kubelet', {'read-only-port': '0'}),
-    '4.2.6': ('kv', 'kubelet', {'protect-kernel-defaults': 'true'}),
+    # k8s-worker (no known failures with a default install)
 }
 ADMISSION_PLUGINS = {'enable-admission-plugins': ('PersistentVolumeLabel',
                                                   'PodSecurityPolicy,'
-                                                  'ServiceAccount,'
+                                                  'AlwaysPullImages',
                                                   'NodeRestriction')}
 DANGEROUS = {
     '0.0.0': ('cli', 'echo "this is fine"', None),
 
-    # etcd (no known failures with a default install)
+    # etcd (no known warnings with a default install)
 
     # k8s-master
-    '1.2.2': ('kv', 'kube-apiserver', {'basic-auth-file': None}),
-    '1.2.3': ('kv', 'kube-apiserver', {'token-auth-file': None}),
-    '1.2.7': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
-    '1.2.8': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
-    '1.2.9': ('kv', 'kube-apiserver', {'authorization-mode': 'RBAC,Node'}),
-    '1.2.14': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
-    '1.2.16': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
-    '1.2.17': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
-    '1.2.18': ('kv', 'kube-apiserver', {'insecure-bind-address': None}),
-    '1.2.19': ('kv', 'kube-apiserver', {'insecure-port': '0'}),
+    '1.1.21': ('cli', 'chmod -R 600 /root/cdk/*.key', None),
+    '1.2.9': ('manual', None, None),
+    '1.2.11': ('kv', 'kube-apiserver', ADMISSION_PLUGINS),
+    '1.2.25': ('manual', None, None),
     '1.2.33': ('manual', None, None),
-    '1.3.6': ('kv', 'kube-controller-manager',
-              {'feature-gates': 'RotateKubeletServerCertificate=true'}),
+    '1.2.34': ('manual', None, None),
 
     # k8s-worker
-    '4.2.12': ('kv', 'kubelet',
-               {'feature-gates': 'RotateKubeletServerCertificate=true'}),
+    '4.2.9': ('kv', 'kubelet', {'event-qps': 0}),
+    '4.2.13': ('kv', 'kubelet',
+               {'tls-cipher-suites': 'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256'}),
 }
 
 
@@ -198,13 +183,14 @@ def apply(remediations=None):
     except Exception:
         _fail('Failed to load: {}'.format(json_log))
 
+    full_json = full_json.get('Controls')[0] if 'Controls' in full_json else full_json
     for test in full_json.get('tests', {}):
         for result in test.get('results', {}):
             test_num = result.get('test_number')
             test_remediation = result.get('remediation')
             test_status = result.get('status', '')
 
-            if test_status.lower() == 'fail':
+            if test_status.lower() in ('fail', 'warn'):
                 test_remedy = CONSERVATIVE.get(test_num)
                 if not test_remedy and danger:
                     # no conservative remedy, check dangerous if user wants
@@ -279,7 +265,7 @@ def report(log_format='text'):
 
     # Node type is different depending on the charm
     app = hookenv.charm_name() or 'unknown'
-    version = 'cis-1.5'
+    version = 'cis-1.20'
     if 'master' in app:
         target = 'master'
     elif 'worker' in app:
@@ -309,7 +295,9 @@ def report(log_format='text'):
     with tempfile.NamedTemporaryFile(mode='w+b', prefix=log_prefix,
                                      dir=RESULTS_DIR, delete=False) as res_file:
         try:
-            subprocess.call(shlex.split(verbose_cmd), stdout=res_file)
+            subprocess.call(shlex.split(verbose_cmd),
+                            stdout=res_file,
+                            stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
             _fail('Failed to run: {}'.format(verbose_cmd))
         else:
@@ -321,7 +309,8 @@ def report(log_format='text'):
     # so operators can see everything related to this run.
     try:
         out = subprocess.check_output(shlex.split(summary_cmd),
-                                      universal_newlines=True)
+                                      universal_newlines=True,
+                                      stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         _fail('Failed to run: {}'.format(summary_cmd))
     else:

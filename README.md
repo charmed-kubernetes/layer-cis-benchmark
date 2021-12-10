@@ -3,7 +3,7 @@
 This is a base layer for common code needed to run the
 [CIS Benchmark for Kubernetes][cis-benchmark]. Charms that include this layer
 will have a `cis-benchmark` action included in their builds. This action
-invokes the [kube-bench][kube-bench] utiity to test if Kubernetes components
+invokes the [kube-bench][kube-bench] utility to test if Kubernetes components
 comply with the benchmark recommendations.
 
 ## Usage
@@ -22,7 +22,7 @@ analysis.
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.5 --noremediations --noresults run --targets etcd
+    --benchmark cis-1.20 --noremediations --noresults run --targets etcd
   report: juju scp etcd/0:/home/ubuntu/kube-bench-results/results-text-49681_7h .
   summary: |
     == Summary ==
@@ -62,18 +62,18 @@ Benchmark the `kubernetes-worker` charm using a custom configuration archive:
 
 ```bash
 juju run-action --wait kubernetes-worker/0 cis-benchmark \
-  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.5.zip'
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.20.zip'
 ```
 
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.5 --noremediations --noresults run --targets node
+    --benchmark cis-1.20 --noremediations --noresults run --targets node
   report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-text-nmmlsvy3 .
   summary: |
     == Summary ==
-    16 checks PASS
-    4 checks FAIL
+    21 checks PASS
+    0 checks FAIL
     3 checks WARN
     0 checks INFO
 status: completed
@@ -85,35 +85,36 @@ configuration archive:
 ```bash
 juju run-action --wait kubernetes-worker/0 cis-benchmark \
   apply='dangerous' \
-  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.5.zip'
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.20.zip'
 ```
 
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.5 --noremediations --noresults run --targets node
+    --benchmark cis-1.20 --noremediations --noresults run --targets node
   report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-json-dozp8j3z .
-  summary: Applied 4 remediations. Re-run with "apply=none" to generate a new report.
+  summary: Applied 3 remediations. Re-run with "apply=none" to generate a new report.
 status: completed
 ```
 
-Re-run the earlier action to verify previous failures have been fixed:
+After the cluster settles, re-run the earlier action to verify previous
+failures have been fixed:
 
 ```bash
 juju run-action --wait kubernetes-worker/0 cis-benchmark \
-  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.5.zip'
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.20.zip'
 ```
 
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.5 --noremediations --noresults run --targets node
+    --benchmark cis-1.20 --noremediations --noresults run --targets node
   report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-text-4agbktbf .
   summary: |
     == Summary ==
-    20 checks PASS
+    23 checks PASS
     0 checks FAIL
-    3 checks WARN
+    0 checks WARN
     0 checks INFO
 status: completed
 ```

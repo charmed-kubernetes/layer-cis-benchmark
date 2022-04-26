@@ -7,6 +7,7 @@ def patch_fixture(patch_target):
     def _fixture():
         with mock.patch(patch_target) as m:
             yield m
+
     return _fixture
 
 

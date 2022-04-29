@@ -22,7 +22,7 @@ analysis.
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.20 --noremediations --noresults run --targets etcd
+    --benchmark cis-1.23 --noremediations --noresults run --targets etcd
   report: juju scp etcd/0:/home/ubuntu/kube-bench-results/results-text-49681_7h .
   summary: |
     == Summary ==
@@ -62,13 +62,13 @@ Benchmark the `kubernetes-worker` charm using a custom configuration archive:
 
 ```bash
 juju run-action --wait kubernetes-worker/0 cis-benchmark \
-  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.20.zip'
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.23.zip'
 ```
 
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.20 --noremediations --noresults run --targets node
+    --benchmark cis-1.23 --noremediations --noresults run --targets node
   report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-text-nmmlsvy3 .
   summary: |
     == Summary ==
@@ -85,13 +85,13 @@ configuration archive:
 ```bash
 juju run-action --wait kubernetes-worker/0 cis-benchmark \
   apply='dangerous' \
-  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.20.zip'
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.23.zip'
 ```
 
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.20 --noremediations --noresults run --targets node
+    --benchmark cis-1.23 --noremediations --noresults run --targets node
   report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-json-dozp8j3z .
   summary: Applied 3 remediations. Re-run with "apply=none" to generate a new report.
 status: completed
@@ -102,13 +102,13 @@ failures have been fixed:
 
 ```bash
 juju run-action --wait kubernetes-worker/0 cis-benchmark \
-  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.20.zip'
+  config='https://github.com/charmed-kubernetes/kube-bench-config/archive/cis-1.23.zip'
 ```
 
 ```yaml
 results:
   cmd: /home/ubuntu/kube-bench/kube-bench -D /home/ubuntu/kube-bench/cfg-ck
-    --benchmark cis-1.20 --noremediations --noresults run --targets node
+    --benchmark cis-1.23 --noremediations --noresults run --targets node
   report: juju scp kubernetes-worker/0:/home/ubuntu/kube-bench-results/results-text-4agbktbf .
   summary: |
     == Summary ==

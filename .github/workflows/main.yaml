@@ -2,6 +2,11 @@ name: Test Suite
 on: [pull_request]
 
 jobs:
+  call-inclusive-naming-check:
+    name: Inclusive naming
+    uses: canonical-web-and-design/Inclusive-naming/.github/workflows/woke.yaml@main
+    with:
+      fail-on-error: "true"
   lint-unit:
     name: Lint, Unit
     runs-on: ubuntu-latest

@@ -32,7 +32,7 @@ RESULTS_DIR = "/home/ubuntu/kube-bench-results"
 CONSERVATIVE = {
     "0.0.0": ("cli", 'echo "this is fine"', None),
     # etcd (no known failures with a default install)
-    # k8s-master (no known failures with a default install)
+    # k8s-control-plane (no known failures with a default install)
     # k8s-worker (no known failures with a default install)
 }
 ADMISSION_PLUGINS = {
@@ -45,7 +45,7 @@ ADMISSION_PLUGINS = {
 DANGEROUS = {
     "0.0.0": ("cli", 'echo "this is fine"', None),
     # etcd (no known warnings with a default install)
-    # k8s-master
+    # k8s-control-plane
     "1.1.21": ("cli", "chmod -R 600 /root/cdk/*.key", None),
     "1.2.9": ("manual", None, None),
     "1.2.11": ("kv", "kube-apiserver", ADMISSION_PLUGINS),
@@ -103,6 +103,11 @@ def _restart_charm():
     if "master" in app:
         hookenv.log("Restarting master")
         clear_flag("kubernetes-master.components.started")
+        # or this app could have been upgrade to new flags
+        clear_flag("kubernetes-control-plane.components.started")
+    elif "control-plane" in app:
+        hookenv.log("Restarting control-plane")
+        clear_flag("kubernetes-control-plane.components.started")
     elif "worker" in app:
         hookenv.log("Restarting worker")
         set_flag("kubernetes-worker.restart-needed")
@@ -287,8 +292,12 @@ def report(log_format="text"):
 
     # Node type is different depending on the charm
     app = hookenv.charm_name() or "unknown"
-    version = "cis-1.20"
+    version = "cis-1.23"
     if "master" in app:
+        target = "master"
+    if "control-plane" in app:
+        # must refer to this as upstream kube-bench tests do
+        # wokeignore:rule=master
         target = "master"
     elif "worker" in app:
         target = "node"
@@ -350,7 +359,9 @@ if __name__ == "__main__":
     if not (
         is_flag_set("snap.installed.etcd")
         or is_flag_set("kubernetes-master.snaps.installed")
+        or is_flag_set("kubernetes-control-plane.snaps.installed")
         or is_flag_set("kubernetes-worker.snaps.installed")
+        or is_flag_set("kubernetes-node.snaps.installed")
     ):
         msg = "Snaps are not yet installed on this unit."
         _fail(msg)
